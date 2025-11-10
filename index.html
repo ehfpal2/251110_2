@@ -1,13 +1,188 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>251110_2</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>진법 퀴즈 & 미니 챗봇</title>
+    <style>
+      :root { --gap: 12px; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 24px; background: #f6f7fb; color: #111;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif;
+      }
+      .container { max-width: 980px; margin: 0 auto; display: grid; gap: 16px; }
+      header h1 { margin: 0; font-size: 28px; font-weight: 800; }
+      .sub { color:#555; margin-top:6px; }
+      .card {
+        background: #fff; border-radius: 16px; padding: 18px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.06);
+      }
+      .grid { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
+      /* 퀴즈 화면(#view-quiz)에서만 6:4 비율 적용 */
+      #view-quiz .grid { grid-template-columns: 6fr 4fr; }
+
+      /* 반응형: 모바일에서는 한 열 */
+      @media (max-width: 900px) {
+        #view-quiz .grid { grid-template-columns: 1fr; }
+      }
+
+      /* 퀴즈 화면에서만 챗봇 높이 조정(선택) */
+      #view-quiz .chat { height: 320px; }
+
+      @media (max-width: 780px){ .grid { grid-template-columns: 1fr; } }
+      .btn {
+        border: 2px solid #2f6feb; border-radius: 12px; padding: 12px 14px;
+        background: #edf3ff; cursor: pointer; font-weight: 700; width: 100%;
+      }
+      .btn.light { background:#fff; }
+      .section-title { font-weight: 800; margin: 0 0 8px; }
+      .row { display:flex; align-items:center; justify-content: space-between; gap: 10px; }
+      .stack { display:flex; flex-direction:column; gap: 10px; }
+      .pill { font-family: ui-monospace, Menlo, Consolas, monospace; background:#111; color:#0ff7; border-radius: 8px; padding:2px 6px; }
+      input[type="text"], input[type="number"], textarea {
+        width: 100%; padding: 10px 12px; border-radius: 12px; border:1px solid #d5d8e0; outline:none;
+        background:#fff;
+      }
+      textarea { min-height: 120px; resize: vertical; }
+      input:focus, textarea:focus { border-color:#2f6feb; box-shadow: 0 0 0 3px rgba(47,111,235,.15); }
+      .kbd { font: 12px/1 ui-monospace, Menlo, Consolas, monospace; border:1px solid #d0d7de; border-bottom-width:2px; border-radius:6px; padding:2px 6px; background:#f6f8fa;}
+      .quiz-q { font-size: 20px; font-weight: 800; margin: 8px 0 6px; }
+      .quiz-meta { color:#555; margin: 4px 0 12px; }
+      .feedback { margin-top: 8px; font-weight: 700; }
+      .ok { color:#1f883d; }
+      .bad { color:#d1242f; }
+
+      /* 화면 전환용 */
+      .view { display:none; }
+      .view.active { display:block; }
+
+      /* 챗봇 */
+      .chat { display:flex; flex-direction:column; gap:10px; height: 380px; }
+      .chat-log { flex:1; overflow:auto; border:1px solid #e5e7ef; border-radius: 12px; padding: 12px; background:#fff; }
+      .msg { padding:10px 12px; border-radius: 12px; margin-bottom:8px; max-width: 90%; }
+      .user { background:#eaf2ff; margin-left:auto; }
+      .bot  { background:#f2f2f2; margin-right:auto; }
+      .small { font-size: 12px; color:#666; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div class="container">
+      <header>
+        <h1>진법 퀴즈 & 미니 챗봇</h1>
+        <p class="sub">먼저 <strong>풀 주제</strong>를 선택하세요. 각 주제는 <strong>랜덤 15문제</strong>가 나오며, 모르면 <span class="pill">정답 보기</span> 또는 오른쪽 챗봇에 물어볼 수 있어요.</p>
+      </header>
+
+      <!-- 메인(주제선택) -->
+      <section id="view-home" class="view active card">
+        <h2 class="section-title">주제 선택</h2>
+        <div class="grid">
+          <button class="btn" data-mode="bin-dec">2진수 ➜ 10진수 변환</button>
+          <button class="btn" data-mode="dec-bin">10진수 ➜ 2진수 변환</button>
+          <button class="btn" data-mode="bin-oct">2진수 ➜ 8진수 변환</button>
+          <button class="btn" data-mode="bin-hex">2진수 ➜ 16진수 변환</button>
+        </div>
+      </section>
+
+      <!-- 퀴즈 -->
+      <section id="view-quiz" class="view">
+        <div class="grid">
+          <!-- 왼쪽: 문제 -->
+          <div class="card">
+            <div class="row">
+              <div><strong>주제</strong> <span id="modeLabel">—</span></div>
+              <div><strong>문제</strong> <span id="qNum">1</span>/15</div>
+              <div><strong>점수</strong> <span id="score">0</span></div>
+            </div>
+
+            <div class="quiz-q" id="question">문제 로딩중…</div>
+            <div class="quiz-meta" id="meta">—</div>
+
+            <div class="stack">
+              <label for="answer">정답 입력</label>
+              <input id="answer" type="text" placeholder="여기에 입력" />
+              <div class="row">
+                <button class="btn" id="checkBtn">정답 확인</button>
+                <button class="btn light" id="revealBtn">모르겠어요(정답 보기)</button>
+                <button class="btn light" id="nextBtn">다음 문제</button>
+              </div>
+              <div class="feedback" id="feedback"></div>
+              <div class="small">단축키: <span class="kbd">Enter</span>=정답, <span class="kbd">R</span>=정답보기, <span class="kbd">N</span>=다음문제</div>
+              <div class="row">
+                <button class="btn light" id="endBtn">종료하고 메인으로</button>
+                <button class="btn light" id="hintBtn">현재 문제 풀이 힌트(챗봇)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 오른쪽: 챗봇 -->
+          <div class="card">
+            <div class="stack chat">
+              <div class="row" style="justify-content: space-between;">
+                <strong>미니 챗봇</strong>
+                <span class="small">진법 변환 과정을 단계적으로 설명해 줍니다.</span>
+              </div>
+              <div id="chatLog" class="chat-log"></div>
+              <div class="row">
+                <input id="chatInput" type="text" placeholder="예: 101101을 10진수로 어떻게 바꾸나요?" />
+                <button class="btn" id="sendBtn">보내기</button>
+              </div>
+              <div class="small">키는 환경변수 <code>VITE_OPENAI_API_KEY</code>에서 읽습니다. (프로덕션 보안 주의)</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 결과 -->
+      <section id="view-result" class="view card">
+        <h2 class="section-title">결과</h2>
+        <p id="resultText">총점: — / 15</p>
+        <div class="grid">
+          <button class="btn" id="retryBtn">같은 주제로 다시 풀기</button>
+          <button class="btn light" id="homeBtn">메인으로 돌아가기</button>
+        </div>
+      </section>
+
+      <!-- ✅ 성찰 제출 (베이지톤) -->
+      <section id="view-reflect" class="view">
+        <div class="card" style="background:linear-gradient(180deg,#fffdf6,#fff5e6); border:1px solid #efe4d2;">
+          <h2 class="section-title">오늘 배운 내용 제출</h2>
+          <p class="sub" style="color:#8a8379">
+            이름과 학번, 그리고 오늘 무엇을 배웠는지 간단히 적어 주세요. <br/>
+            제출 시 Google Form으로 전송됩니다. (no-cors)
+          </p>
+
+          <div class="grid" style="grid-template-columns: 1fr 1fr;">
+            <div>
+              <label for="refName">이름</label>
+              <input id="refName" type="text" placeholder="홍길동" />
+            </div>
+            <div>
+              <label for="refSid">학번</label>
+              <input id="refSid" type="text" placeholder="2025-001" />
+            </div>
+          </div>
+
+          <div class="stack" style="margin-top:12px">
+            <label for="refLearned">오늘 무엇을 배웠나요?</label>
+            <textarea id="refLearned" placeholder="예) 2진수→10진수 변환에서 자리값(2^k)을 더해 구하는 방법을 알게 되었다."></textarea>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button class="btn" id="reflectSubmitBtn">제출</button>
+            <button class="btn light" id="reflectSkipBtn">건너뛰고 메인으로</button>
+          </div>
+
+          <div id="reflectMsg" class="small" style="margin-top:8px;color:#6b5c45"></div>
+          <div class="small" style="margin-top:8px;color:#9a8f80">
+            전송 대상: <code>formResponse</code> · entry(이름)=<code>entry.1000037525</code>,
+            entry(학번)=<code>entry.241800951</code>, entry(배운내용)=<code>entry.298032889</code>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Vite entry -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
